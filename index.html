@@ -107,6 +107,7 @@ header {
 .card.investable .card-value { color: var(--accent); }
 .card.c4 .card-value { color: var(--accent4); }
 .card.c3 .card-value { color: var(--accent3); }
+.card.rule .card-value { color: #9f92ff; font-size: 1.15rem; line-height: 1.3; }
 .ibar { height: 4px; background: var(--surface3); border-radius: 2px; margin-top: .75rem; overflow: hidden; }
 .ibar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .8s cubic-bezier(.16,1,.3,1); }
 .card-badge { font-family: var(--mono); font-size: .6rem; background: rgba(124,110,255,.15); border: 1px solid rgba(124,110,255,.3); border-radius: 4px; padding: .1rem .4rem; color: var(--accent); margin-left: .4rem; vertical-align: middle; }
@@ -426,6 +427,20 @@ tr:hover td { background: var(--surface2); }
     'duolingo','headspace','calm'
   ];
 
+  var NEED_CATS = {
+    bills: true,
+    rent: true,
+    groceries: true,
+    transport: true
+  };
+
+  var WANT_CATS = {
+    eating_out: true,
+    entertainment: true,
+    shopping: true,
+    holidays: true
+  };
+
   function getCat(raw) {
     if (!raw) { return CAT.general; }
     var k = raw.toLowerCase().replace(/ /g, '_');
@@ -545,6 +560,24 @@ tr:hover td { background: var(--surface2); }
       byDay[dk] = (byDay[dk] || 0) + Math.abs(spendTxns[n].amount);
     }
 
+    var needs = 0;
+    var wants = 0;
+    for (var bi = 0; bi < spendTxns.length; bi++) {
+      var catKey = (spendTxns[bi].category || 'general').toLowerCase().replace(/ /g, '_');
+      var amtAbs = Math.abs(spendTxns[bi].amount);
+      if (NEED_CATS[catKey] || isFlatExp(spendTxns[bi])) {
+        needs += amtAbs;
+      } else if (WANT_CATS[catKey]) {
+        wants += amtAbs;
+      } else {
+        wants += amtAbs;
+      }
+    }
+    var savings = investable;
+    var needsPct = income > 0 ? (needs / income * 100) : 0;
+    var wantsPct = income > 0 ? (wants / income * 100) : 0;
+    var savingsPct = income > 0 ? (savings / income * 100) : 0;
+
     return {
       income:    income,
       spending:  spending,
@@ -552,7 +585,15 @@ tr:hover td { background: var(--surface2); }
       byCat:     byCat,
       byDay:     byDay,
       flatTotal: flatTotal,
-      recurring: detectRecurring(txns)
+      recurring: detectRecurring(txns),
+      rule503020: {
+        needs: needs,
+        wants: wants,
+        savings: savings,
+        needsPct: needsPct,
+        wantsPct: wantsPct,
+        savingsPct: savingsPct
+      }
     };
   }
 
@@ -745,6 +786,15 @@ tr:hover td { background: var(--surface2); }
         + '<div class="card-value">' + fmt(s.investable) + '</div>'
         + '<div class="card-sub">income &minus; all spending</div>'
         + '<div class="ibar"><div class="ibar-fill" style="width:' + pct.toFixed(1) + '%"></div></div>'
+      + '</div>'
+      + '<div class="card rule">'
+        + '<div class="card-label">50/30/20 split</div>'
+        + '<div class="card-value">'
+          + s.rule503020.needsPct.toFixed(0) + '% / '
+          + s.rule503020.wantsPct.toFixed(0) + '% / '
+          + s.rule503020.savingsPct.toFixed(0) + '%'
+        + '</div>'
+        + '<div class="card-sub">Needs / Wants / Savings</div>'
       + '</div>';
   }
 
@@ -768,6 +818,14 @@ tr:hover td { background: var(--surface2); }
 
     var dayCount = Math.max(1, Object.keys(s.byDay).length);
     chips.push('<div class="insight-chip">&#x1F4C5; Daily avg: <strong>' + fmt(s.spending / dayCount) + '</strong></div>');
+
+    chips.push(
+      '<div class="insight-chip">&#x1F3AF; 50/30/20 target vs actual: '
+      + '<strong>50/' + s.rule503020.needsPct.toFixed(0)
+      + ' &middot; 30/' + s.rule503020.wantsPct.toFixed(0)
+      + ' &middot; 20/' + s.rule503020.savingsPct.toFixed(0)
+      + '</strong></div>'
+    );
 
     var keys = Object.keys(monthsData).sort();
     if (keys.length >= 2 && activeKey !== 'all') {
