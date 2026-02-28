@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>budget.</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+
+:root {
+  --bg: #0a0a0f;
+  --surface: #111118;
+  --surface2: #18181f;
+  --surface3: #1f1f28;
+  --border: #2a2a38;
+  --accent: #7c6eff;
+  --accent2: #ff6e9c;
+  --accent3: #6effd8;
+  --accent4: #ffd06e;
+  --text: #e8e8f0;
+  --text2: #8888aa;
+  --text3: #555570;
+  --positive: #6effd8;
+  --negative: #ff6e9c;
+  --font: 'Syne', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; overflow-x: hidden; }
+
+#upload-screen {
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2rem; padding: 2rem;
+}
+#upload-screen::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(124,110,255,.15) 0%, transparent 60%),
+              radial-gradient(ellipse 50% 40% at 80% 80%, rgba(110,255,216,.05) 0%, transparent 50%);
+}
+.upload-title { font-size: clamp(2.5rem,6vw,5rem); font-weight: 800; letter-spacing: -.03em; text-align: center; line-height: 1; }
+.upload-title span { color: var(--accent); }
+.upload-sub { color: var(--text2); font-size: .95rem; font-family: var(--mono); text-align: center; margin-top: .5rem; }
+.drop-zone {
+  width: 100%; max-width: 500px; border: 1.5px dashed var(--border);
+  border-radius: 16px; padding: 3rem 2rem; text-align: center; cursor: pointer;
+  transition: all .2s; background: var(--surface); position: relative;
+}
+.drop-zone:hover, .drop-zone.drag { border-color: var(--accent); background: rgba(124,110,255,.05); }
+.drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.drop-icon { width: 48px; height: 48px; margin: 0 auto 1rem; background: var(--surface3); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
+.drop-label { font-size: 1rem; font-weight: 600; margin-bottom: .4rem; }
+.drop-hint { color: var(--text2); font-size: .8rem; font-family: var(--mono); }
+.upload-note { font-family: var(--mono); font-size: .7rem; color: var(--text3); text-align: center; }
+
+#dashboard { display: none; min-height: 100vh; }
+header {
+  padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem;
+  border-bottom: 1px solid var(--border); position: sticky; top: 0;
+  background: rgba(10,10,15,.92); backdrop-filter: blur(12px); z-index: 100; flex-wrap: wrap;
+}
+.logo { font-size: 1.1rem; font-weight: 800; letter-spacing: -.02em; flex-shrink: 0; }
+.logo span { color: var(--accent); }
+
+.month-bar { display: flex; gap: .4rem; flex: 1; overflow-x: auto; scrollbar-width: none; align-items: center; }
+.month-bar::-webkit-scrollbar { display: none; }
+.month-pill {
+  padding: .35rem .85rem; border-radius: 20px; font-family: var(--mono); font-size: .72rem;
+  cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text2);
+  white-space: nowrap; transition: all .18s; display: inline-flex; align-items: center; gap: .3rem; user-select: none;
+}
+.month-pill:hover { color: var(--text); border-color: var(--text3); }
+.month-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.month-pill.all { border-style: dashed; }
+.del-btn { color: rgba(255,255,255,.3); font-size: .7rem; display: none; line-height: 1; }
+.month-pill:hover .del-btn { display: inline; }
+.del-btn:hover { color: var(--negative) !important; }
+
+.header-actions { display: flex; gap: .5rem; align-items: center; margin-left: auto; flex-shrink: 0; }
+.btn {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text2);
+  padding: .4rem .9rem; border-radius: 8px; cursor: pointer; font-family: var(--mono);
+  font-size: .75rem; transition: all .2s; white-space: nowrap;
+}
+.btn:hover { color: var(--text); border-color: var(--text3); }
+.btn.primary { background: rgba(124,110,255,.15); border-color: var(--accent); color: var(--accent); }
+.btn.primary:hover { background: rgba(124,110,255,.25); }
+.btn.danger:hover { color: var(--negative); border-color: var(--negative); }
+
+.main { padding: 2rem; max-width: 1400px; margin: 0 auto; }
+
+#no-data-screen { display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; gap: 1rem; text-align: center; }
+#no-data-screen .big { font-size: 3rem; }
+#no-data-screen .title { font-size: 1.2rem; font-weight: 700; }
+#no-data-screen .sub { color: var(--text2); font-family: var(--mono); font-size: .85rem; }
+
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem 1.5rem; transition: border-color .2s; }
+.card:hover { border-color: var(--text3); }
+.card-label { font-family: var(--mono); font-size: .68rem; color: var(--text2); text-transform: uppercase; letter-spacing: .08em; margin-bottom: .5rem; }
+.card-value { font-size: 1.8rem; font-weight: 700; letter-spacing: -.03em; line-height: 1; }
+.card-sub { font-family: var(--mono); font-size: .7rem; color: var(--text3); margin-top: .4rem; }
+.card.income .card-value { color: var(--positive); }
+.card.spent .card-value { color: var(--negative); }
+.card.investable .card-value { color: var(--accent); }
+.card.c4 .card-value { color: var(--accent4); }
+.card.c3 .card-value { color: var(--accent3); }
+.ibar { height: 4px; background: var(--surface3); border-radius: 2px; margin-top: .75rem; overflow: hidden; }
+.ibar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .8s cubic-bezier(.16,1,.3,1); }
+.card-badge { font-family: var(--mono); font-size: .6rem; background: rgba(124,110,255,.15); border: 1px solid rgba(124,110,255,.3); border-radius: 4px; padding: .1rem .4rem; color: var(--accent); margin-left: .4rem; vertical-align: middle; }
+
+.insight-strip { display: flex; gap: 1rem; overflow-x: auto; padding-bottom: .5rem; margin-bottom: 1.5rem; scrollbar-width: none; }
+.insight-strip::-webkit-scrollbar { display: none; }
+.insight-chip { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: .65rem 1rem; white-space: nowrap; font-size: .8rem; display: flex; align-items: center; gap: .5rem; flex-shrink: 0; }
+
+.tab-bar { display: flex; gap: .5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
+.tab { padding: .6rem 1.25rem; border-radius: 8px 8px 0 0; cursor: pointer; font-size: .82rem; font-weight: 600; color: var(--text2); transition: all .2s; border: 1px solid transparent; border-bottom: none; margin-bottom: -1px; background: transparent; }
+.tab.active { color: var(--text); background: var(--surface); border-color: var(--border); border-bottom-color: var(--surface); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+@media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; margin-bottom: 1rem; }
+.panel-title { font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); margin-bottom: 1.25rem; font-family: var(--mono); display: flex; align-items: center; gap: .5rem; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+
+.chart-wrap { position: relative; height: 220px; }
+.chart-wrap.tall { height: 270px; }
+
+.cat-row { display: flex; align-items: center; gap: .75rem; margin-bottom: .9rem; }
+.cat-emoji { font-size: 1rem; width: 1.5rem; text-align: center; flex-shrink: 0; }
+.cat-info { flex: 1; min-width: 0; }
+.cat-name { font-size: .85rem; font-weight: 600; margin-bottom: .25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cat-bar-bg { height: 4px; background: var(--surface3); border-radius: 2px; overflow: hidden; }
+.cat-bar { height: 100%; border-radius: 2px; transition: width .8s cubic-bezier(.16,1,.3,1); }
+.cat-amount { font-family: var(--mono); font-size: .8rem; color: var(--text2); white-space: nowrap; }
+
+.sub-list { display: flex; flex-direction: column; gap: .5rem; }
+.sub-item { display: flex; align-items: center; justify-content: space-between; padding: .6rem .75rem; background: var(--surface2); border-radius: 8px; border: 1px solid var(--border); }
+.sub-name { font-size: .85rem; font-weight: 500; }
+.sub-meta { font-family: var(--mono); font-size: .65rem; color: var(--text3); }
+.sub-amount { font-family: var(--mono); font-size: .85rem; color: var(--accent2); }
+
+.search-bar { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: .6rem 1rem; color: var(--text); font-family: var(--font); font-size: .85rem; margin-bottom: 1rem; outline: none; transition: border-color .2s; }
+.search-bar:focus { border-color: var(--accent); }
+.search-bar::placeholder { color: var(--text3); }
+.tx-scroll { max-height: 420px; overflow-y: auto; }
+.tx-scroll::-webkit-scrollbar { width: 4px; }
+.tx-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.tx-list { display: flex; flex-direction: column; }
+.tx-item { display: grid; grid-template-columns: 2rem 1fr auto; align-items: center; gap: .75rem; padding: .6rem 0; border-bottom: 1px solid var(--border); }
+.tx-item:last-child { border-bottom: none; }
+.tx-emoji { font-size: 1rem; text-align: center; }
+.tx-name { font-size: .82rem; font-weight: 500; }
+.tx-date { font-family: var(--mono); font-size: .65rem; color: var(--text3); }
+.tx-amount { font-family: var(--mono); font-size: .82rem; }
+.tx-amount.out { color: var(--negative); }
+.tx-amount.in { color: var(--positive); }
+
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: .5rem .75rem; }
+th { color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border); text-align: left; font-family: var(--mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; }
+td { border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: .78rem; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--surface2); }
+
+.delta { font-family: var(--mono); font-size: .65rem; padding: .15rem .4rem; border-radius: 4px; margin-left: .3rem; }
+.delta.up { background: rgba(255,110,156,.15); color: var(--negative); }
+.delta.down { background: rgba(110,255,216,.15); color: var(--positive); }
+.tag { display: inline-block; font-family: var(--mono); font-size: .6rem; background: var(--surface3); border: 1px solid var(--border); border-radius: 4px; padding: .1rem .4rem; color: var(--text3); }
+.empty { color: var(--text3); font-size: .82rem; font-family: var(--mono); text-align: center; padding: 1rem 0; }
+
+#toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(2rem); background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: .75rem 1.25rem; font-family: var(--mono); font-size: .8rem; opacity: 0; transition: all .3s; z-index: 999; pointer-events: none; white-space: nowrap; }
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div id="upload-screen">
+  <div>
+    <div class="upload-title">Your money,<br><span>clearly.</span></div>
+    <div class="upload-sub">Drop your Monzo CSV export to get started</div>
+  </div>
+  <div class="drop-zone" id="drop-zone">
+    <input type="file" id="file-input-upload" accept=".csv">
+    <div class="drop-icon">📊</div>
+    <div class="drop-label">Drop your Monzo statement here</div>
+    <div class="drop-hint" style="margin-top:.35rem;">or click to browse &middot; CSV only</div>
+  </div>
+  <div class="upload-note">Everything stored locally in your browser &mdash; your data never leaves this device</div>
+</div>
+
+<div id="dashboard">
+  <header>
+    <div class="logo">budget<span>.</span></div>
+    <div class="month-bar" id="month-bar"></div>
+    <div class="header-actions">
+      <label class="btn primary" style="cursor:pointer;">
+        + Add month
+        <input type="file" id="file-input-add" accept=".csv" style="display:none;">
+      </label>
+      <button class="btn danger" id="clear-all-btn">Clear all</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <div id="no-data-screen">
+      <div class="big">📂</div>
+      <div class="title">No months loaded</div>
+      <div class="sub">Use "+ Add month" above to upload a Monzo CSV</div>
+    </div>
+
+    <div id="dashboard-content">
+      <div class="summary-grid" id="summary-cards"></div>
+      <div class="insight-strip" id="insights"></div>
+
+      <div class="tab-bar">
+        <div class="tab active" data-tab="overview">Overview</div>
+        <div class="tab" data-tab="categories">Categories</div>
+        <div class="tab" data-tab="subscriptions">Recurring</div>
+        <div class="tab" data-tab="transactions">Transactions</div>
+        <div class="tab" data-tab="trends">Trends</div>
+      </div>
+
+      <div id="tab-overview" class="tab-content active">
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-title"><span class="dot"></span>Daily spending</div>
+            <div class="chart-wrap"><canvas id="chart-daily"></canvas></div>
+          </div>
+          <div class="panel">
+            <div class="panel-title"><span class="dot" style="background:var(--accent2)"></span>By category</div>
+            <div class="chart-wrap"><canvas id="chart-donut"></canvas></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-title"><span class="dot" style="background:var(--accent3)"></span>Top spending categories</div>
+          <div id="top-cats"></div>
+        </div>
+      </div>
+
+      <div id="tab-categories" class="tab-content">
+        <div class="two-col" id="cat-grid"></div>
+      </div>
+
+      <div id="tab-subscriptions" class="tab-content">
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-title"><span class="dot" style="background:var(--accent2)"></span>Detected recurring payments</div>
+            <div class="sub-list" id="sub-list"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-title"><span class="dot" style="background:var(--accent4)"></span>Breakdown</div>
+            <div class="chart-wrap"><canvas id="chart-subs"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-transactions" class="tab-content">
+        <input class="search-bar" id="tx-search" placeholder="Search transactions..." type="text">
+        <div class="panel" style="padding:1rem 1.5rem;">
+          <div class="tx-scroll">
+            <div class="tx-list" id="tx-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-trends" class="tab-content">
+        <div id="trends-placeholder" class="panel" style="text-align:center;padding:3rem;">
+          <div style="font-size:2rem;margin-bottom:.75rem;">📈</div>
+          <div style="font-weight:700;margin-bottom:.5rem;">Upload at least 2 months to see trends</div>
+          <div style="color:var(--text2);font-family:var(--mono);font-size:.82rem;">Use "+ Add month" in the header</div>
+        </div>
+        <div id="trends-content" style="display:none;">
+          <div class="two-col">
+            <div class="panel">
+              <div class="panel-title"><span class="dot"></span>Income vs Spending</div>
+              <div class="chart-wrap tall"><canvas id="chart-ti"></canvas></div>
+            </div>
+            <div class="panel">
+              <div class="panel-title"><span class="dot" style="background:var(--accent3)"></span>Savings rate %</div>
+              <div class="chart-wrap tall"><canvas id="chart-tsr"></canvas></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-title"><span class="dot" style="background:var(--accent4)"></span>Category trends (top 5)</div>
+            <div class="chart-wrap tall"><canvas id="chart-tcats"></canvas></div>
+          </div>
+          <div class="panel" id="trend-table"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  // ── IndexedDB ──────────────────────────────────────────────
+  var DB_NAME  = 'monzo_budget_v2';
+  var DB_STORE = 'months';
+  var db = null;
+
+  function openDB() {
+    return new Promise(function (res, rej) {
+      var req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = function (e) {
+        e.target.result.createObjectStore(DB_STORE, { keyPath: 'key' });
+      };
+      req.onsuccess = function (e) { db = e.target.result; res(); };
+      req.onerror   = function ()  { rej(req.error); };
+    });
+  }
+  function dbAll() {
+    return new Promise(function (res, rej) {
+      var r = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).getAll();
+      r.onsuccess = function () { res(r.result); };
+      r.onerror   = function () { rej(r.error); };
+    });
+  }
+  function dbPut(rec) {
+    return new Promise(function (res, rej) {
+      var r = db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).put(rec);
+      r.onsuccess = function () { res(); };
+      r.onerror   = function () { rej(r.error); };
+    });
+  }
+  function dbDel(key) {
+    return new Promise(function (res, rej) {
+      var r = db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).delete(key);
+      r.onsuccess = function () { res(); };
+      r.onerror   = function () { rej(r.error); };
+    });
+  }
+  function dbClear() {
+    return new Promise(function (res, rej) {
+      var r = db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).clear();
+      r.onsuccess = function () { res(); };
+      r.onerror   = function () { rej(r.error); };
+    });
+  }
+
+  // ── State ──────────────────────────────────────────────────
+  var monthsData = {};
+  var activeKey  = 'all';
+  var charts     = {};
+
+  // ── Config ─────────────────────────────────────────────────
+  var CAT = {
+    groceries:     { emoji: '🛒', label: 'Groceries',     color: '#6effd8' },
+    eating_out:    { emoji: '🍽️', label: 'Eating Out',    color: '#ff6e9c' },
+    transport:     { emoji: '🚇', label: 'Transport',      color: '#7c6eff' },
+    entertainment: { emoji: '🎬', label: 'Entertainment', color: '#ffd06e' },
+    shopping:      { emoji: '🛍️', label: 'Shopping',      color: '#ff9f6e' },
+    bills:         { emoji: '⚡',  label: 'Bills',          color: '#6eb5ff' },
+    rent:          { emoji: '🏠', label: 'Rent & Flat',   color: '#b06eff' },
+    general:       { emoji: '💳', label: 'General',        color: '#888899' },
+    cash:          { emoji: '💵', label: 'Cash',           color: '#aaaacc' },
+    transfers:     { emoji: '🔄', label: 'Transfers',      color: '#556677' },
+    savings:       { emoji: '🏦', label: 'Savings',        color: '#4effa8' },
+    personal_care: { emoji: '🧴', label: 'Personal Care', color: '#ff8ec4' },
+    health:        { emoji: '💊', label: 'Health',         color: '#6effc2' },
+    holidays:      { emoji: '✈️', label: 'Travel',         color: '#ffe06e' },
+    finances:      { emoji: '📈', label: 'Finances',       color: '#9fff6e' },
+    subscriptions: { emoji: '📱', label: 'Subscriptions', color: '#c06eff' },
+    income:        { emoji: '💰', label: 'Income',         color: '#6effd8' },
+    family:        { emoji: '👪', label: 'Family',         color: '#ffb06e' }
+  };
+
+  var PALETTE = [
+    '#7c6eff','#ff6e9c','#6effd8','#ffd06e',
+    '#ff9f6e','#6eb5ff','#b06eff','#9fff6e',
+    '#ff8ec4','#ffe06e'
+  ];
+
+  var FLAT_KW = [
+    'rent','council tax','council ','water rates','thames water',
+    'anglian water','severn trent','british gas','edf energy',
+    'octopus energy','bulb','ovo energy','e.on',
+    'virgin media','bt broadband','sky broadband','sky tv','talktalk',
+    'service charge','ground rent','landlord','letting',
+    'electricity','gas bill'
+  ];
+
+  var SUB_KW = [
+    'netflix','spotify','amazon prime','disney+','disney plus',
+    'apple.com/bill','google one','youtube premium',
+    'gym','pure gym','planet fitness','anytime fitness',
+    'david lloyd','nuffield','icloud','dropbox','github',
+    'notion','linkedin','adobe','microsoft 365','office 365',
+    'duolingo','headspace','calm'
+  ];
+
+  function getCat(raw) {
+    if (!raw) { return CAT.general; }
+    var k = raw.toLowerCase().replace(/ /g, '_');
+    return CAT[k] || { emoji: '💳', label: raw, color: '#888899' };
+  }
+
+  // ── CSV parsing ────────────────────────────────────────────
+  function parseCSV(text) {
+    var result = Papa.parse(text, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: function (h) { return h.trim(); }
+    });
+    var rows = [];
+    for (var i = 0; i < result.data.length; i++) {
+      var row = result.data[i];
+      var mOut = parseFloat(row['Money Out'] || 0) || 0;
+      var mIn  = parseFloat(row['Money In']  || 0) || 0;
+      var amt  = parseFloat(row['Amount']    || 0) || 0;
+      var isCredit = (mIn > 0 || amt > 0);
+      var value    = mIn > 0 ? mIn : Math.abs(mOut || Math.min(amt, 0));
+      var signed   = isCredit ? value : -value;
+      var cat      = (row['Category'] || '').trim();
+      var dateStr  = (row['Date'] || '').trim();
+      var d        = parseDate(dateStr);
+      if (!d) { continue; }
+      rows.push({
+        id:       row['Transaction ID'] || String(Math.random()),
+        date:     d,
+        dateStr:  dateStr,
+        name:     (row['Name'] || row['Description'] || '').trim(),
+        category: cat,
+        emoji:    row['Emoji'] || getCat(cat).emoji,
+        amount:   signed,
+        isCredit: isCredit,
+        notes:    (row['Notes and #tags'] || '').trim()
+      });
+    }
+    return rows;
+  }
+
+  function parseDate(s) {
+    if (!s) { return null; }
+    var m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m1) { return new Date(+m1[3], +m1[2] - 1, +m1[1]); }
+    var m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m2) { return new Date(+m2[1], +m2[2] - 1, +m2[3]); }
+    var d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function monthKey(txns) {
+    var dates = txns.map(function (t) { return t.date; }).sort(function (a, b) { return a - b; });
+    if (!dates.length) { return null; }
+    var d = dates[0];
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  function monthLabel(key) {
+    var parts = key.split('-');
+    return new Date(+parts[0], +parts[1] - 1, 1)
+      .toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+  }
+
+  // ── Analysis ───────────────────────────────────────────────
+  function isTransfer(t) {
+    var cat  = (t.category || '').toLowerCase();
+    var name = (t.name || '').toLowerCase();
+    return cat === 'transfers' || name.indexOf('transfer') !== -1 || name.indexOf('savings pot') !== -1;
+  }
+
+  function isFlatExp(t) {
+    var name = (t.name || '').toLowerCase();
+    var cat  = (t.category || '').toLowerCase();
+    for (var i = 0; i < FLAT_KW.length; i++) {
+      if (name.indexOf(FLAT_KW[i]) !== -1) { return true; }
+    }
+    return cat === 'bills' || cat === 'rent';
+  }
+
+  function analyse(txns) {
+    var spendTxns  = txns.filter(function (t) { return !t.isCredit && !isTransfer(t); });
+    var incomeTxns = txns.filter(function (t) { return  t.isCredit && !isTransfer(t); });
+
+    var spending   = spendTxns.reduce(function (s, t)  { return s + Math.abs(t.amount); }, 0);
+    var income     = incomeTxns.reduce(function (s, t) { return s + t.amount; }, 0);
+    var investable = Math.max(0, income - spending);
+
+    var byCat = {};
+    for (var i = 0; i < spendTxns.length; i++) {
+      var k = spendTxns[i].category || 'general';
+      byCat[k] = (byCat[k] || 0) + Math.abs(spendTxns[i].amount);
+    }
+
+    var flatTotal = 0;
+    for (var j = 0; j < txns.length; j++) {
+      if (!txns[j].isCredit && isFlatExp(txns[j])) {
+        flatTotal += Math.abs(txns[j].amount);
+      }
+    }
+
+    var byDay = {};
+    for (var n = 0; n < spendTxns.length; n++) {
+      var dk = spendTxns[n].date.toISOString().slice(0, 10);
+      byDay[dk] = (byDay[dk] || 0) + Math.abs(spendTxns[n].amount);
+    }
+
+    return {
+      income:    income,
+      spending:  spending,
+      investable: investable,
+      byCat:     byCat,
+      byDay:     byDay,
+      flatTotal: flatTotal,
+      recurring: detectRecurring(txns)
+    };
+  }
+
+  function detectRecurring(txns) {
+    var groups = {};
+    var debitTxns = txns.filter(function (t) { return !t.isCredit; });
+    for (var i = 0; i < debitTxns.length; i++) {
+      var t = debitTxns[i];
+      var k = (t.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+      if (!groups[k]) { groups[k] = []; }
+      groups[k].push(t);
+    }
+
+    var out = [];
+    var keys = Object.keys(groups);
+    for (var gi = 0; gi < keys.length; gi++) {
+      var key  = keys[gi];
+      var list = groups[key];
+
+      var isKnown = false;
+      for (var s = 0; s < SUB_KW.length; s++) {
+        if (key.indexOf(SUB_KW[s]) !== -1) { isKnown = true; break; }
+      }
+      var isFlat = false;
+      for (var f = 0; f < FLAT_KW.length; f++) {
+        if (key.indexOf(FLAT_KW[f]) !== -1) { isFlat = true; break; }
+      }
+
+      var amounts = list.map(function (t) { return Math.abs(t.amount); });
+      var sameAmt = true;
+      for (var ai = 1; ai < amounts.length; ai++) {
+        if (Math.abs(amounts[ai] - amounts[0]) > 0.51) { sameAmt = false; break; }
+      }
+
+      if ((list.length >= 2 && sameAmt) || isKnown || isFlat) {
+        var total = 0;
+        for (var ti = 0; ti < amounts.length; ti++) { total += amounts[ti]; }
+        var avg  = total / amounts.length;
+        var type = isFlat ? 'flat' : isKnown ? 'subscription' : 'recurring';
+        out.push({
+          name:   list[0].name,
+          emoji:  list[0].emoji || (isFlat ? '🏠' : isKnown ? '📱' : '🔄'),
+          amount: avg,
+          count:  list.length,
+          type:   type
+        });
+      }
+    }
+    out.sort(function (a, b) { return b.amount - a.amount; });
+    return out;
+  }
+
+  // ── Helpers ────────────────────────────────────────────────
+  function fmt(n) {
+    return '£' + Math.abs(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function killChart(id) {
+    if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+  }
+
+  function activeTxns() {
+    if (activeKey === 'all') {
+      var all = [];
+      var ks  = Object.keys(monthsData);
+      for (var i = 0; i < ks.length; i++) {
+        all = all.concat(monthsData[ks[i]].txns);
+      }
+      return all;
+    }
+    return monthsData[activeKey] ? monthsData[activeKey].txns : [];
+  }
+
+  function gridScales(suffix) {
+    var suf = suffix || '';
+    return {
+      x: {
+        grid: { color: 'rgba(255,255,255,.04)' },
+        ticks: { color: '#555570', font: { size: 10 } }
+      },
+      y: {
+        grid: { color: 'rgba(255,255,255,.04)' },
+        ticks: {
+          color: '#555570',
+          font: { size: 10 },
+          callback: function (v) { return suf ? v + suf : '£' + v; }
+        }
+      }
+    };
+  }
+
+  // ── Render master ──────────────────────────────────────────
+  function render() {
+    var txns = activeTxns();
+    if (!txns.length) { return; }
+    var s = analyse(txns);
+    renderMonthBar();
+    renderSummary(s, txns);
+    renderInsights(s);
+    renderOverview(s);
+    renderCategories(txns);
+    renderSubs(s);
+    renderTx(txns, '');
+    renderTrends();
+  }
+
+  // ── Month bar ──────────────────────────────────────────────
+  function renderMonthBar() {
+    var keys = Object.keys(monthsData).sort();
+    var html = '<div class="month-pill all ' + (activeKey === 'all' ? 'active' : '') + '" data-key="all">All time</div>';
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      html += '<div class="month-pill ' + (activeKey === k ? 'active' : '') + '" data-key="' + k + '">'
+            + monthLabel(k)
+            + '<span class="del-btn" data-del="' + k + '">&#x2715;</span>'
+            + '</div>';
+    }
+    var bar = document.getElementById('month-bar');
+    bar.innerHTML = html;
+
+    var pills = bar.querySelectorAll('.month-pill');
+    for (var pi = 0; pi < pills.length; pi++) {
+      (function (el) {
+        el.addEventListener('click', function (e) {
+          if (e.target.classList.contains('del-btn')) { return; }
+          activeKey = el.dataset.key;
+          render();
+        });
+      })(pills[pi]);
+    }
+
+    var delBtns = bar.querySelectorAll('.del-btn');
+    for (var di = 0; di < delBtns.length; di++) {
+      (function (btn) {
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var k = btn.dataset.del;
+          if (!confirm('Delete ' + monthLabel(k) + '?')) { return; }
+          dbDel(k).then(function () {
+            delete monthsData[k];
+            if (activeKey === k) { activeKey = 'all'; }
+            if (!Object.keys(monthsData).length) {
+              showNoData();
+            } else {
+              renderMonthBar();
+              render();
+            }
+            toast('Deleted ' + monthLabel(k));
+          });
+        });
+      })(delBtns[di]);
+    }
+  }
+
+  // ── Summary ────────────────────────────────────────────────
+  function renderSummary(s, txns) {
+    var pct      = s.income > 0 ? Math.min(100, s.investable / s.income * 100) : 0;
+    var badge    = activeKey === 'all' ? '<span class="card-badge">all time</span>' : '';
+    var recTotal = 0;
+    for (var i = 0; i < s.recurring.length; i++) { recTotal += s.recurring[i].amount; }
+    var credits  = txns.filter(function (t) { return t.isCredit && !isTransfer(t); }).length;
+
+    document.getElementById('summary-cards').innerHTML =
+      '<div class="card income">'
+        + '<div class="card-label">Income' + badge + '</div>'
+        + '<div class="card-value">' + fmt(s.income) + '</div>'
+        + '<div class="card-sub">' + credits + ' credits</div>'
+      + '</div>'
+      + '<div class="card spent">'
+        + '<div class="card-label">Spent' + badge + '</div>'
+        + '<div class="card-value">' + fmt(s.spending) + '</div>'
+        + '<div class="card-sub">excl. transfers</div>'
+      + '</div>'
+      + '<div class="card c4">'
+        + '<div class="card-label">Fixed &amp; Flat</div>'
+        + '<div class="card-value">' + fmt(s.flatTotal) + '</div>'
+        + '<div class="card-sub">rent, bills, utilities</div>'
+      + '</div>'
+      + '<div class="card c3">'
+        + '<div class="card-label">Recurring</div>'
+        + '<div class="card-value">' + fmt(recTotal) + '</div>'
+        + '<div class="card-sub">' + s.recurring.length + ' detected</div>'
+      + '</div>'
+      + '<div class="card investable">'
+        + '<div class="card-label">Investable' + badge + '</div>'
+        + '<div class="card-value">' + fmt(s.investable) + '</div>'
+        + '<div class="card-sub">income &minus; all spending</div>'
+        + '<div class="ibar"><div class="ibar-fill" style="width:' + pct.toFixed(1) + '%"></div></div>'
+      + '</div>';
+  }
+
+  // ── Insights ───────────────────────────────────────────────
+  function renderInsights(s) {
+    var chips = [];
+    var sr = s.income > 0 ? (s.investable / s.income * 100).toFixed(0) : '0';
+    chips.push('<div class="insight-chip">&#x1F4A1; Savings rate: <strong>' + sr + '%</strong></div>');
+
+    var catEntries = Object.entries(s.byCat).sort(function (a, b) { return b[1] - a[1]; });
+    if (catEntries.length) {
+      var c = getCat(catEntries[0][0]);
+      chips.push('<div class="insight-chip">' + c.emoji + ' Biggest: <strong>' + c.label + '</strong> ' + fmt(catEntries[0][1]) + '</div>');
+    }
+
+    var subTotal = 0;
+    for (var ri = 0; ri < s.recurring.length; ri++) { subTotal += s.recurring[ri].amount; }
+    if (subTotal > 0) {
+      chips.push('<div class="insight-chip">&#x1F501; Recurring: <strong>' + fmt(subTotal) + '</strong></div>');
+    }
+
+    var dayCount = Math.max(1, Object.keys(s.byDay).length);
+    chips.push('<div class="insight-chip">&#x1F4C5; Daily avg: <strong>' + fmt(s.spending / dayCount) + '</strong></div>');
+
+    var keys = Object.keys(monthsData).sort();
+    if (keys.length >= 2 && activeKey !== 'all') {
+      var idx = keys.indexOf(activeKey);
+      if (idx > 0) {
+        var prevS = analyse(monthsData[keys[idx - 1]].txns);
+        var diff  = s.spending - prevS.spending;
+        var cls   = diff > 0 ? 'up' : 'down';
+        var arrow = diff > 0 ? '▲' : '▼';
+        chips.push('<div class="insight-chip">&#x1F4CA; vs last month: <span class="delta ' + cls + '">' + arrow + ' ' + fmt(Math.abs(diff)) + '</span></div>');
+      }
+    }
+
+    document.getElementById('insights').innerHTML = chips.join('');
+  }
+
+  // ── Overview tab ───────────────────────────────────────────
+  function renderOverview(s) {
+    var dayEntries = Object.entries(s.byDay).sort();
+
+    killChart('daily');
+    charts['daily'] = new Chart(document.getElementById('chart-daily'), {
+      type: 'bar',
+      data: {
+        labels: dayEntries.map(function (e) {
+          var dt = new Date(e[0]);
+          return dt.getDate() + ' ' + dt.toLocaleString('en-GB', { month: 'short' });
+        }),
+        datasets: [{
+          data: dayEntries.map(function (e) { return e[1]; }),
+          backgroundColor: 'rgba(124,110,255,.25)',
+          borderColor: '#7c6eff',
+          borderWidth: 1.5,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: function (ctx) { return ' ' + fmt(ctx.raw); } } }
+        },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#555570', font: { size: 10 }, maxTicksLimit: 10 } },
+          y: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#555570', font: { size: 10 }, callback: function (v) { return '£' + v; } } }
+        }
+      }
+    });
+
+    var catE = Object.entries(s.byCat)
+      .filter(function (e) { return e[0] !== 'transfers'; })
+      .sort(function (a, b) { return b[1] - a[1]; })
+      .slice(0, 8);
+
+    killChart('donut');
+    charts['donut'] = new Chart(document.getElementById('chart-donut'), {
+      type: 'doughnut',
+      data: {
+        labels: catE.map(function (e) { return getCat(e[0]).label; }),
+        datasets: [{
+          data: catE.map(function (e) { return e[1]; }),
+          backgroundColor: catE.map(function (e) { return getCat(e[0]).color + 'cc'; }),
+          borderColor:     catE.map(function (e) { return getCat(e[0]).color; }),
+          borderWidth: 1.5,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+          legend: { position: 'right', labels: { color: '#8888aa', font: { size: 10, family: 'JetBrains Mono' }, padding: 10, boxWidth: 10 } },
+          tooltip: { callbacks: { label: function (ctx) { return ' ' + fmt(ctx.raw); } } }
+        }
+      }
+    });
+
+    var maxVal = catE.length ? catE[0][1] : 1;
+    var topHtml = '';
+    for (var i = 0; i < catE.length; i++) {
+      var c   = getCat(catE[i][0]);
+      var pct = (catE[i][1] / maxVal * 100).toFixed(1);
+      topHtml +=
+        '<div class="cat-row">'
+          + '<div class="cat-emoji">' + c.emoji + '</div>'
+          + '<div class="cat-info">'
+            + '<div class="cat-name">' + c.label + '</div>'
+            + '<div class="cat-bar-bg"><div class="cat-bar" style="width:' + pct + '%;background:' + c.color + '"></div></div>'
+          + '</div>'
+          + '<div class="cat-amount">' + fmt(catE[i][1]) + '</div>'
+        + '</div>';
+    }
+    document.getElementById('top-cats').innerHTML = topHtml;
+  }
+
+  // ── Categories tab ─────────────────────────────────────────
+  function renderCategories(txns) {
+    var cg = {};
+    var filtered = txns.filter(function (t) { return !t.isCredit && !isTransfer(t); });
+    for (var i = 0; i < filtered.length; i++) {
+      var k = filtered[i].category || 'general';
+      if (!cg[k]) { cg[k] = []; }
+      cg[k].push(filtered[i]);
+    }
+
+    var entries = Object.entries(cg).sort(function (a, b) {
+      var tA = a[1].reduce(function (s, t) { return s + Math.abs(t.amount); }, 0);
+      var tB = b[1].reduce(function (s, t) { return s + Math.abs(t.amount); }, 0);
+      return tB - tA;
+    });
+
+    var html = '';
+    for (var ei = 0; ei < entries.length; ei++) {
+      var cat   = entries[ei][0];
+      var items = entries[ei][1];
+      var c     = getCat(cat);
+      var total = items.reduce(function (s, t) { return s + Math.abs(t.amount); }, 0);
+      var top5  = items.slice().sort(function (a, b) { return Math.abs(b.amount) - Math.abs(a.amount); }).slice(0, 5);
+
+      var rows = '';
+      for (var ti = 0; ti < top5.length; ti++) {
+        var t = top5[ti];
+        rows += '<div class="tx-item">'
+          + '<div class="tx-emoji">' + (t.emoji || c.emoji) + '</div>'
+          + '<div><div class="tx-name">' + (t.name || '—') + '</div><div class="tx-date">' + t.dateStr + '</div></div>'
+          + '<div class="tx-amount out">' + fmt(t.amount) + '</div>'
+        + '</div>';
+      }
+      var more = items.length > 5 ? '<div class="empty">+' + (items.length - 5) + ' more</div>' : '';
+
+      html += '<div class="panel">'
+        + '<div class="panel-title"><span class="dot" style="background:' + c.color + '"></span>' + c.emoji + ' ' + c.label + ' — ' + fmt(total) + '</div>'
+        + '<div class="tx-list">' + rows + more + '</div>'
+      + '</div>';
+    }
+    document.getElementById('cat-grid').innerHTML = html;
+  }
+
+  // ── Recurring tab ──────────────────────────────────────────
+  function renderSubs(s) {
+    var rec = s.recurring;
+    if (!rec.length) {
+      document.getElementById('sub-list').innerHTML = '<div class="empty">No recurring payments detected</div>';
+      killChart('subs');
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < rec.length; i++) {
+      var r = rec[i];
+      html += '<div class="sub-item">'
+        + '<div>'
+          + '<div class="sub-name">' + r.emoji + ' ' + r.name + '</div>'
+          + '<div class="sub-meta tag">' + r.type + ' &middot; ' + r.count + '&times;</div>'
+        + '</div>'
+        + '<div class="sub-amount">' + fmt(r.amount) + '</div>'
+      + '</div>';
+    }
+    document.getElementById('sub-list').innerHTML = html;
+
+    var top = rec.slice(0, 8);
+    killChart('subs');
+    charts['subs'] = new Chart(document.getElementById('chart-subs'), {
+      type: 'bar',
+      data: {
+        labels: top.map(function (r) { return r.name.length > 20 ? r.name.slice(0, 20) + '…' : r.name; }),
+        datasets: [{
+          data: top.map(function (r) { return r.amount; }),
+          backgroundColor: 'rgba(255,110,156,.3)',
+          borderColor: '#ff6e9c',
+          borderWidth: 1.5,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: function (ctx) { return ' ' + fmt(ctx.raw); } } }
+        },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#555570', font: { size: 10 }, callback: function (v) { return '£' + v; } } },
+          y: { grid: { display: false }, ticks: { color: '#8888aa', font: { size: 10, family: 'JetBrains Mono' } } }
+        }
+      }
+    });
+  }
+
+  // ── Transactions tab ───────────────────────────────────────
+  function renderTx(txns, filter) {
+    var sorted   = txns.slice().sort(function (a, b) { return b.date - a.date; });
+    var filtered = filter
+      ? sorted.filter(function (t) {
+          var n = (t.name     || '').toLowerCase();
+          var c = (t.category || '').toLowerCase();
+          var o = (t.notes    || '').toLowerCase();
+          return n.indexOf(filter) !== -1 || c.indexOf(filter) !== -1 || o.indexOf(filter) !== -1;
+        })
+      : sorted;
+
+    if (!filtered.length) {
+      document.getElementById('tx-list').innerHTML = '<div class="empty">No transactions found</div>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < filtered.length; i++) {
+      var t   = filtered[i];
+      var cat = getCat(t.category);
+      html += '<div class="tx-item">'
+        + '<div class="tx-emoji">' + (t.emoji || cat.emoji) + '</div>'
+        + '<div>'
+          + '<div class="tx-name">' + (t.name || '—') + '</div>'
+          + '<div class="tx-date">' + t.dateStr + ' &middot; ' + cat.label + '</div>'
+        + '</div>'
+        + '<div class="tx-amount ' + (t.isCredit ? 'in' : 'out') + '">' + (t.isCredit ? '+' : '') + fmt(t.amount) + '</div>'
+      + '</div>';
+    }
+    document.getElementById('tx-list').innerHTML = html;
+  }
+
+  // ── Trends tab ─────────────────────────────────────────────
+  function renderTrends() {
+    var keys = Object.keys(monthsData).sort();
+    var placeholder = document.getElementById('trends-placeholder');
+    var content     = document.getElementById('trends-content');
+
+    if (keys.length < 2) {
+      placeholder.style.display = 'block';
+      content.style.display = 'none';
+      return;
+    }
+    placeholder.style.display = 'none';
+    content.style.display = 'block';
+
+    var labels = keys.map(monthLabel);
+    var stats  = keys.map(function (k) { return analyse(monthsData[k].txns); });
+
+    // Income vs Spending
+    killChart('ti');
+    charts['ti'] = new Chart(document.getElementById('chart-ti'), {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Income',
+            data: stats.map(function (s) { return +s.income.toFixed(2); }),
+            backgroundColor: 'rgba(110,255,216,.2)',
+            borderColor: '#6effd8',
+            borderWidth: 2,
+            borderRadius: 4
+          },
+          {
+            label: 'Spending',
+            data: stats.map(function (s) { return +s.spending.toFixed(2); }),
+            backgroundColor: 'rgba(255,110,156,.2)',
+            borderColor: '#ff6e9c',
+            borderWidth: 2,
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, labels: { color: '#8888aa', font: { size: 10, family: 'JetBrains Mono' }, boxWidth: 10 } },
+          tooltip: { callbacks: { label: function (ctx) { return ctx.dataset.label + ': ' + fmt(ctx.raw); } } }
+        },
+        scales: gridScales()
+      }
+    });
+
+    // Savings rate
+    killChart('tsr');
+    charts['tsr'] = new Chart(document.getElementById('chart-tsr'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Savings rate',
+          data: stats.map(function (s) { return s.income > 0 ? +(s.investable / s.income * 100).toFixed(1) : 0; }),
+          borderColor: '#6effd8',
+          backgroundColor: 'rgba(110,255,216,.08)',
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: '#6effd8',
+          pointRadius: 5
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: function (ctx) { return ctx.raw.toFixed(1) + '%'; } } }
+        },
+        scales: gridScales('%')
+      }
+    });
+
+    // Category trends — top 5 by total across all months
+    var allCats = [];
+    for (var si = 0; si < stats.length; si++) {
+      var catKeys = Object.keys(stats[si].byCat);
+      for (var ci = 0; ci < catKeys.length; ci++) {
+        if (catKeys[ci] !== 'transfers' && allCats.indexOf(catKeys[ci]) === -1) {
+          allCats.push(catKeys[ci]);
+        }
+      }
+    }
+    var catTotals = {};
+    for (var ac = 0; ac < allCats.length; ac++) {
+      var ck = allCats[ac];
+      catTotals[ck] = stats.reduce(function (sum, s) { return sum + (s.byCat[ck] || 0); }, 0);
+    }
+    allCats.sort(function (a, b) { return catTotals[b] - catTotals[a]; });
+    var topCats = allCats.slice(0, 5);
+
+    killChart('tcats');
+    charts['tcats'] = new Chart(document.getElementById('chart-tcats'), {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: topCats.map(function (ck, idx) {
+          var c = getCat(ck);
+          return {
+            label: c.label,
+            data: stats.map(function (s) { return +(s.byCat[ck] || 0).toFixed(2); }),
+            backgroundColor: PALETTE[idx] + '44',
+            borderColor: PALETTE[idx],
+            borderWidth: 1.5,
+            borderRadius: 2
+          };
+        })
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, labels: { color: '#8888aa', font: { size: 10, family: 'JetBrains Mono' }, boxWidth: 10 } },
+          tooltip: { callbacks: { label: function (ctx) { return ctx.dataset.label + ': ' + fmt(ctx.raw); } } }
+        },
+        scales: gridScales()
+      }
+    });
+
+    // Summary table
+    var rows = '';
+    for (var ki = 0; ki < keys.length; ki++) {
+      var s   = stats[ki];
+      var sr  = s.income > 0 ? (s.investable / s.income * 100).toFixed(0) : 0;
+      var src = +sr >= 20 ? 'var(--positive)' : +sr >= 10 ? 'var(--accent4)' : 'var(--negative)';
+      var delta = '';
+      if (ki > 0) {
+        var prev = stats[ki - 1];
+        var diff = s.spending - prev.spending;
+        var dcls = diff > 0 ? 'up' : 'down';
+        delta = '<span class="delta ' + dcls + '">' + (diff > 0 ? '▲' : '▼') + ' ' + fmt(Math.abs(diff)) + '</span>';
+      }
+      rows += '<tr>'
+        + '<td style="font-weight:600;color:var(--text)">'    + monthLabel(keys[ki]) + '</td>'
+        + '<td style="text-align:right;color:var(--positive)">' + fmt(s.income)     + '</td>'
+        + '<td style="text-align:right;color:var(--negative)">' + fmt(s.spending)   + delta + '</td>'
+        + '<td style="text-align:right;color:var(--accent4)">'  + fmt(s.flatTotal)  + '</td>'
+        + '<td style="text-align:right;color:var(--accent)">'   + fmt(s.investable) + '</td>'
+        + '<td style="text-align:right;color:' + src + '">'     + sr + '%</td>'
+      + '</tr>';
+    }
+
+    document.getElementById('trend-table').innerHTML =
+      '<div class="panel-title"><span class="dot" style="background:var(--accent4)"></span>Month by month summary</div>'
+      + '<div style="overflow-x:auto"><table>'
+      + '<thead><tr>'
+        + '<th>Month</th>'
+        + '<th style="text-align:right">Income</th>'
+        + '<th style="text-align:right">Spent</th>'
+        + '<th style="text-align:right">Fixed</th>'
+        + '<th style="text-align:right">Investable</th>'
+        + '<th style="text-align:right">Rate</th>'
+      + '</tr></thead>'
+      + '<tbody>' + rows + '</tbody>'
+      + '</table></div>';
+  }
+
+  // ── File loading ───────────────────────────────────────────
+  function loadFile(file) {
+    if (!file || !file.name.toLowerCase().endsWith('.csv')) {
+      toast('Please select a CSV file');
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var txns = parseCSV(e.target.result);
+      if (!txns.length) { toast('No valid transactions found'); return; }
+      var key = monthKey(txns);
+      if (!key) { toast('Could not detect month from file'); return; }
+      var label = monthLabel(key);
+      if (monthsData[key] && !confirm(label + ' is already loaded. Replace it?')) { return; }
+
+      var storable = txns.map(function (t) {
+        return {
+          id:       t.id,
+          date:     t.date.toISOString(),
+          dateStr:  t.dateStr,
+          name:     t.name,
+          category: t.category,
+          emoji:    t.emoji,
+          amount:   t.amount,
+          isCredit: t.isCredit,
+          notes:    t.notes
+        };
+      });
+
+      dbPut({ key: key, label: label, txns: storable }).then(function () {
+        monthsData[key] = { key: key, label: label, txns: txns };
+        activeKey = key;
+        showDashboard();
+        render();
+        toast('Loaded ' + label);
+      });
+    };
+    reader.readAsText(file);
+  }
+
+  function rehydrate(rec) {
+    var txns = rec.txns.map(function (t) {
+      return {
+        id:       t.id,
+        date:     new Date(t.date),
+        dateStr:  t.dateStr,
+        name:     t.name,
+        category: t.category,
+        emoji:    t.emoji,
+        amount:   t.amount,
+        isCredit: t.isCredit,
+        notes:    t.notes
+      };
+    });
+    return { key: rec.key, label: rec.label, txns: txns };
+  }
+
+  // ── UI helpers ─────────────────────────────────────────────
+  function showDashboard() {
+    document.getElementById('upload-screen').style.display    = 'none';
+    document.getElementById('dashboard').style.display        = 'block';
+    document.getElementById('dashboard-content').style.display = 'block';
+    document.getElementById('no-data-screen').style.display   = 'none';
+  }
+
+  function showNoData() {
+    document.getElementById('upload-screen').style.display    = 'none';
+    document.getElementById('dashboard').style.display        = 'block';
+    document.getElementById('dashboard-content').style.display = 'none';
+    document.getElementById('no-data-screen').style.display   = 'flex';
+    renderMonthBar();
+  }
+
+  var toastTimer;
+  function toast(msg) {
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2800);
+  }
+
+  // ── Events ─────────────────────────────────────────────────
+  document.getElementById('file-input-upload').addEventListener('change', function (e) {
+    loadFile(e.target.files[0]);
+  });
+
+  document.getElementById('file-input-add').addEventListener('change', function (e) {
+    loadFile(e.target.files[0]);
+    e.target.value = '';
+  });
+
+  var dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover',  function (e) { e.preventDefault(); dz.classList.add('drag'); });
+  dz.addEventListener('dragleave', function ()  { dz.classList.remove('drag'); });
+  dz.addEventListener('drop',      function (e) {
+    e.preventDefault();
+    dz.classList.remove('drag');
+    loadFile(e.dataTransfer.files[0]);
+  });
+
+  document.getElementById('clear-all-btn').addEventListener('click', function () {
+    if (!confirm('Delete ALL months? This cannot be undone.')) { return; }
+    dbClear().then(function () {
+      monthsData = {};
+      activeKey  = 'all';
+      showNoData();
+      toast('All data cleared');
+    });
+  });
+
+  document.querySelectorAll('.tab').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
+      document.querySelectorAll('.tab-content').forEach(function (t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  document.getElementById('tx-search').addEventListener('input', function (e) {
+    renderTx(activeTxns(), e.target.value.toLowerCase().trim());
+  });
+
+  // ── Boot ───────────────────────────────────────────────────
+  openDB()
+    .then(dbAll)
+    .then(function (records) {
+      if (!records.length) { return; }
+      for (var i = 0; i < records.length; i++) {
+        var r = rehydrate(records[i]);
+        monthsData[r.key] = r;
+      }
+      activeKey = 'all';
+      showDashboard();
+      render();
+    })
+    .catch(function (err) { console.error('DB error:', err); });
+
+}());
+</script>
+</body>
+</html>
