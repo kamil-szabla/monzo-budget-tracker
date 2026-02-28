@@ -124,6 +124,29 @@ header {
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
 @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
 
+/* ── Mobile overrides ── */
+@media (max-width: 600px) {
+  .main { padding: 1rem; }
+  header { padding: .75rem 1rem; gap: .5rem; flex-wrap: wrap; }
+  .logo { font-size: 1rem; }
+  .month-bar { order: 3; flex-basis: 100%; min-width: 0; }
+  .header-actions { margin-left: auto; gap: .4rem; flex-shrink: 0; }
+  .btn { padding: .35rem .65rem; font-size: .7rem; }
+  .summary-grid { grid-template-columns: 1fr 1fr; gap: .65rem; }
+  .card { padding: 1rem; }
+  .card-value { font-size: 1.4rem; }
+  .tab-bar { gap: 0; overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; padding-bottom: 0; }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab { padding: .55rem .8rem; font-size: .75rem; white-space: nowrap; flex-shrink: 0; }
+  .panel { padding: 1rem; }
+  .insight-chip { font-size: .75rem; padding: .5rem .75rem; }
+  .chart-wrap { height: 180px; }
+  .chart-wrap.tall { height: 220px; }
+  table { font-size: .7rem; }
+  th, td { padding: .4rem .5rem; }
+  .trend-col-hide { display: none; }
+}
+
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; margin-bottom: 1rem; }
 .panel-title { font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); margin-bottom: 1.25rem; font-family: var(--mono); display: flex; align-items: center; gap: .5rem; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
@@ -173,6 +196,13 @@ tr:hover td { background: var(--surface2); }
 .delta.down { background: rgba(110,255,216,.15); color: var(--positive); }
 .tag { display: inline-block; font-family: var(--mono); font-size: .6rem; background: var(--surface3); border: 1px solid var(--border); border-radius: 4px; padding: .1rem .4rem; color: var(--text3); }
 .empty { color: var(--text3); font-size: .82rem; font-family: var(--mono); text-align: center; padding: 1rem 0; }
+.show-more-btn {
+  display: block; width: 100%; margin-top: .5rem; padding: .5rem;
+  background: transparent; border: 1px dashed var(--border); border-radius: 8px;
+  color: var(--text2); font-family: var(--mono); font-size: .72rem; cursor: pointer;
+  transition: all .18s; text-align: center;
+}
+.show-more-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(124,110,255,.05); }
 
 #toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(2rem); background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: .75rem 1.25rem; font-family: var(--mono); font-size: .8rem; opacity: 0; transition: all .3s; z-index: 999; pointer-events: none; white-space: nowrap; }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -454,6 +484,18 @@ tr:hover td { background: var(--surface2); }
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
   }
 
+  // Group an array of transactions by their calendar month, returns { 'YYYY-MM': [txns] }
+  function splitByMonth(txns) {
+    var groups = {};
+    for (var i = 0; i < txns.length; i++) {
+      var t = txns[i];
+      var k = t.date.getFullYear() + '-' + String(t.date.getMonth() + 1).padStart(2, '0');
+      if (!groups[k]) { groups[k] = []; }
+      groups[k].push(t);
+    }
+    return groups;
+  }
+
   function monthLabel(key) {
     var parts = key.split('-');
     return new Date(+parts[0], +parts[1] - 1, 1)
@@ -604,17 +646,21 @@ tr:hover td { background: var(--surface2); }
 
   // ── Render master ──────────────────────────────────────────
   function render() {
-    var txns = activeTxns();
-    if (!txns.length) { return; }
-    var s = analyse(txns);
-    renderMonthBar();
-    renderSummary(s, txns);
-    renderInsights(s);
-    renderOverview(s);
-    renderCategories(txns);
-    renderSubs(s);
-    renderTx(txns, '');
-    renderTrends();
+    try {
+      var txns = activeTxns();
+      if (!txns.length) { return; }
+      var s = analyse(txns);
+      renderMonthBar();
+      renderSummary(s, txns);
+      renderInsights(s);
+      renderOverview(s);
+      renderCategories(txns);
+      renderSubs(s);
+      renderTx(txns, '');
+      renderTrends();
+    } catch (err) {
+      console.error('render() error:', err);
+    }
   }
 
   // ── Month bar ──────────────────────────────────────────────
@@ -820,6 +866,55 @@ tr:hover td { background: var(--surface2); }
   }
 
   // ── Categories tab ─────────────────────────────────────────
+  function renderCatPanel(cat, items) {
+    var c     = getCat(cat);
+    var total = items.reduce(function (s, t) { return s + Math.abs(t.amount); }, 0);
+    var sorted = items.slice().sort(function (a, b) { return Math.abs(b.amount) - Math.abs(a.amount); });
+    var INITIAL = 5;
+
+    function buildRows(list) {
+      var html = '';
+      for (var i = 0; i < list.length; i++) {
+        var t = list[i];
+        html += '<div class="tx-item">'
+          + '<div class="tx-emoji">' + (t.emoji || c.emoji) + '</div>'
+          + '<div><div class="tx-name">' + (t.name || '—') + '</div><div class="tx-date">' + t.dateStr + '</div></div>'
+          + '<div class="tx-amount out">' + fmt(t.amount) + '</div>'
+        + '</div>';
+      }
+      return html;
+    }
+
+    var panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.innerHTML =
+      '<div class="panel-title"><span class="dot" style="background:' + c.color + '"></span>' + c.emoji + ' ' + c.label + ' — ' + fmt(total) + '</div>'
+      + '<div class="tx-list">' + buildRows(sorted.slice(0, INITIAL)) + '</div>';
+
+    if (sorted.length > INITIAL) {
+      var remaining = sorted.length - INITIAL;
+      var btn = document.createElement('button');
+      btn.className = 'show-more-btn';
+      btn.textContent = 'Show ' + remaining + ' more';
+      var expanded = false;
+      var txList = panel.querySelector('.tx-list');
+      btn.addEventListener('click', function () {
+        if (!expanded) {
+          txList.innerHTML = buildRows(sorted);
+          btn.textContent = 'Show less';
+          expanded = true;
+        } else {
+          txList.innerHTML = buildRows(sorted.slice(0, INITIAL));
+          btn.textContent = 'Show ' + remaining + ' more';
+          expanded = false;
+        }
+      });
+      panel.appendChild(btn);
+    }
+
+    return panel;
+  }
+
   function renderCategories(txns) {
     var cg = {};
     var filtered = txns.filter(function (t) { return !t.isCredit && !isTransfer(t); });
@@ -835,31 +930,11 @@ tr:hover td { background: var(--surface2); }
       return tB - tA;
     });
 
-    var html = '';
+    var grid = document.getElementById('cat-grid');
+    grid.innerHTML = '';
     for (var ei = 0; ei < entries.length; ei++) {
-      var cat   = entries[ei][0];
-      var items = entries[ei][1];
-      var c     = getCat(cat);
-      var total = items.reduce(function (s, t) { return s + Math.abs(t.amount); }, 0);
-      var top5  = items.slice().sort(function (a, b) { return Math.abs(b.amount) - Math.abs(a.amount); }).slice(0, 5);
-
-      var rows = '';
-      for (var ti = 0; ti < top5.length; ti++) {
-        var t = top5[ti];
-        rows += '<div class="tx-item">'
-          + '<div class="tx-emoji">' + (t.emoji || c.emoji) + '</div>'
-          + '<div><div class="tx-name">' + (t.name || '—') + '</div><div class="tx-date">' + t.dateStr + '</div></div>'
-          + '<div class="tx-amount out">' + fmt(t.amount) + '</div>'
-        + '</div>';
-      }
-      var more = items.length > 5 ? '<div class="empty">+' + (items.length - 5) + ' more</div>' : '';
-
-      html += '<div class="panel">'
-        + '<div class="panel-title"><span class="dot" style="background:' + c.color + '"></span>' + c.emoji + ' ' + c.label + ' — ' + fmt(total) + '</div>'
-        + '<div class="tx-list">' + rows + more + '</div>'
-      + '</div>';
+      grid.appendChild(renderCatPanel(entries[ei][0], entries[ei][1]));
     }
-    document.getElementById('cat-grid').innerHTML = html;
   }
 
   // ── Recurring tab ──────────────────────────────────────────
@@ -1091,8 +1166,8 @@ tr:hover td { background: var(--surface2); }
         + '<td style="font-weight:600;color:var(--text)">'    + monthLabel(keys[ki]) + '</td>'
         + '<td style="text-align:right;color:var(--positive)">' + fmt(s.income)     + '</td>'
         + '<td style="text-align:right;color:var(--negative)">' + fmt(s.spending)   + delta + '</td>'
-        + '<td style="text-align:right;color:var(--accent4)">'  + fmt(s.flatTotal)  + '</td>'
-        + '<td style="text-align:right;color:var(--accent)">'   + fmt(s.investable) + '</td>'
+        + '<td style="text-align:right;color:var(--accent4)" class="trend-col-hide">'  + fmt(s.flatTotal)  + '</td>'
+        + '<td style="text-align:right;color:var(--accent)" class="trend-col-hide">'   + fmt(s.investable) + '</td>'
         + '<td style="text-align:right;color:' + src + '">'     + sr + '%</td>'
       + '</tr>';
     }
@@ -1104,8 +1179,8 @@ tr:hover td { background: var(--surface2); }
         + '<th>Month</th>'
         + '<th style="text-align:right">Income</th>'
         + '<th style="text-align:right">Spent</th>'
-        + '<th style="text-align:right">Fixed</th>'
-        + '<th style="text-align:right">Investable</th>'
+        + '<th style="text-align:right" class="trend-col-hide">Fixed</th>'
+        + '<th style="text-align:right" class="trend-col-hide">Investable</th>'
         + '<th style="text-align:right">Rate</th>'
       + '</tr></thead>'
       + '<tbody>' + rows + '</tbody>'
@@ -1122,31 +1197,48 @@ tr:hover td { background: var(--surface2); }
     reader.onload = function (e) {
       var txns = parseCSV(e.target.result);
       if (!txns.length) { toast('No valid transactions found'); return; }
-      var key = monthKey(txns);
-      if (!key) { toast('Could not detect month from file'); return; }
-      var label = monthLabel(key);
-      if (monthsData[key] && !confirm(label + ' is already loaded. Replace it?')) { return; }
 
-      var storable = txns.map(function (t) {
-        return {
-          id:       t.id,
-          date:     t.date.toISOString(),
-          dateStr:  t.dateStr,
-          name:     t.name,
-          category: t.category,
-          emoji:    t.emoji,
-          amount:   t.amount,
-          isCredit: t.isCredit,
-          notes:    t.notes
-        };
+      // Split into per-month buckets
+      var byMonth = splitByMonth(txns);
+      var keys    = Object.keys(byMonth).sort();
+
+      // Check for any months that already exist
+      var conflicts = keys.filter(function (k) { return !!monthsData[k]; });
+      if (conflicts.length > 0) {
+        var conflictLabels = conflicts.map(monthLabel).join(', ');
+        var msg = conflicts.length === 1
+          ? monthLabel(conflicts[0]) + ' is already loaded. Replace it?'
+          : 'These months are already loaded: ' + conflictLabels + '. Replace them?';
+        if (!confirm(msg)) { return; }
+      }
+
+      // Save each month
+      var saves = keys.map(function (k) {
+        var monthTxns = byMonth[k];
+        var label     = monthLabel(k);
+        var storable  = monthTxns.map(function (t) {
+          return {
+            id: t.id, date: t.date.toISOString(), dateStr: t.dateStr,
+            name: t.name, category: t.category, emoji: t.emoji,
+            amount: t.amount, isCredit: t.isCredit, notes: t.notes
+          };
+        });
+        monthsData[k] = { key: k, label: label, txns: monthTxns };
+        return dbPut({ key: k, label: label, txns: storable });
       });
 
-      dbPut({ key: key, label: label, txns: storable }).then(function () {
-        monthsData[key] = { key: key, label: label, txns: txns };
-        activeKey = key;
+      Promise.all(saves).then(function () {
+        // Switch to the most recent month loaded
+        activeKey = keys[keys.length - 1];
         showDashboard();
         render();
-        toast('Loaded ' + label);
+        var msg = keys.length === 1
+          ? 'Loaded ' + monthLabel(keys[0])
+          : 'Loaded ' + keys.length + ' months (' + keys.map(monthLabel).join(', ') + ')';
+        toast(msg);
+      }).catch(function (err) {
+        console.error('Save error:', err);
+        toast('Error saving data — check console');
       });
     };
     reader.readAsText(file);
